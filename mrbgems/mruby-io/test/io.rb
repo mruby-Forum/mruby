@@ -1,5 +1,13 @@
 ##
 # IO Test
+def echo_path
+  begin
+    %x(which echo)
+    return true
+  rescue
+    return false
+  end
+end
 
 assert('IO TEST SETUP') do
   MRubyIOTestUtil.io_test_setup
@@ -419,7 +427,13 @@ end
 assert('IO.popen') do
   begin
     $? = nil
-    io = IO.popen("echo mruby-io")
+
+    if echo_path
+      io = IO.popen("echo mruby-io")
+    else
+      io = IO.popen("cmd /c echo mruby-io")
+    end
+
     assert_true io.close_on_exec?
     assert_equal Fixnum, io.pid.class
 
@@ -598,7 +612,12 @@ end
 
 assert('`cmd`') do
   begin
-    assert_equal `echo foo`, "foo\n"
+    if echo_path
+      test = `echo foo`
+    else
+      test = `cmd /c echo foo`
+    end
+    assert_equal test.chomp, "foo"
   rescue NotImplementedError => e
     skip e.message
   end
