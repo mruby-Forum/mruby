@@ -1,6 +1,6 @@
 ##
 # IO Test
-def echo_path
+def which_echo
   begin
     %x(which echo)
     return true
@@ -428,7 +428,7 @@ assert('IO.popen') do
   begin
     $? = nil
 
-    if echo_path
+    if which_echo
       io = IO.popen("echo mruby-io")
     else
       io = IO.popen("cmd /c echo mruby-io")
@@ -612,12 +612,12 @@ end
 
 assert('`cmd`') do
   begin
-    if echo_path
-      test = `echo foo`
+    if which_echo
+      cmd_return = `echo foo`
     else
-      test = `cmd /c echo foo`
+      cmd_return = `cmd /c echo foo`
     end
-    assert_equal test.chomp, "foo"
+    assert_equal cmd_return.chomp, "foo"
   rescue NotImplementedError => e
     skip e.message
   end
