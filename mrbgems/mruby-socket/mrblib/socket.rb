@@ -12,7 +12,7 @@ class Addrinfo
   #
   def initialize(sockaddr, family=Socket::PF_UNSPEC, socktype=0, protocol=0)
     @hostname = nil
-    if sockaddr.is_a? Array
+    if Array === sockaddr
       sary = sockaddr
       if sary[0] == 'AF_INET' || sary[0] == 'AF_INET6'
         @sockaddr = Socket.sockaddr_in(sary[1], sary[3])
@@ -701,13 +701,11 @@ class UDPSocket < IPSocket
   #   data, addr = sock.recvfrom_nonblock(1024)
   #
   def recvfrom_nonblock(*args)
-    s = self
     begin
       self._setnonblock(true)
       self.recvfrom(*args)
     ensure
-      # XXX: self is a SystemcallException here! (should be bug)
-      s._setnonblock(false)
+      self._setnonblock(false)
     end
   end
 
@@ -780,7 +778,6 @@ class Socket < BasicSocket
   end
 
   #def self.getnameinfo
-  #def self.ip_address_list
 
   #
   # call-seq:
@@ -873,7 +870,7 @@ class Socket < BasicSocket
   #   sock.bind(addrinfo)
   #
   def bind(sockaddr)
-    sockaddr = sockaddr.to_sockaddr if sockaddr.is_a? Addrinfo
+    sockaddr = sockaddr.to_sockaddr if Addrinfo === sockaddr
     Socket._bind(self.fileno, sockaddr)
     0
   end
@@ -888,7 +885,7 @@ class Socket < BasicSocket
   #   sock.connect(addrinfo)
   #
   def connect(sockaddr)
-    sockaddr = sockaddr.to_sockaddr if sockaddr.is_a? Addrinfo
+    sockaddr = sockaddr.to_sockaddr if Addrinfo === sockaddr
     Socket._connect(self.fileno, sockaddr)
     0
   end
@@ -951,7 +948,7 @@ class UNIXSocket < BasicSocket
   #   UNIXSocket.new("/tmp/socket") { |s| s.write("data") }
   #
   def initialize(path, &block)
-    if self.is_a? UNIXServer
+    if UNIXServer === self
       super(path, "r")
     else
       super(Socket._socket(Socket::AF_UNIX, Socket::SOCK_STREAM, 0), "r+")

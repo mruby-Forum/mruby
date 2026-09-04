@@ -46,10 +46,35 @@ assert("Enumerator::Lazy#to_enum") do
   assert_equal [0*1, 2*3, 4*5, 6*7], lazy_enum.map { |a| a.first * a.last }.first(4)
 end
 
+assert("Enumerator::Lazy#flat_map with array from block") do
+  assert_equal [1, 10, 2, 20, 3, 30], [1, 2, 3].lazy.flat_map {|x| [x, x*10]}.force
+end
+
+assert("Enumerator::Lazy#flat_map with non-enumerable from block") do
+  assert_equal [1, 2, 3], [1, 2, 3].lazy.flat_map {|x| x}.force
+end
+
+assert("Enumerator::Lazy#flat_map with nested array from block") do
+  assert_equal [[1, 2], [3, 4]], [1, 3].lazy.flat_map {|x| [[x, x+1]]}.force
+end
+
 assert("Enumerator::Lazy#grep_v") do
   lazy_grep_v = (0..).lazy.grep_v(2..4)
   assert_kind_of Enumerator::Lazy, lazy_grep_v
   assert_equal [0, 1, 5, 6], lazy_grep_v.first(4)
+end
+
+assert("Enumerator::Lazy#tap_each") do
+  seen = []
+  result = [1, 2, 3, 4, 5].lazy.tap_each{|x| seen << x }.select{|x| x % 2 == 0 }.force
+  assert_equal [2, 4], result
+  assert_equal [1, 2, 3, 4, 5], seen
+end
+
+assert("Enumerator::Lazy#tap_each laziness") do
+  seen = []
+  [1, 2, 3, 4, 5].lazy.tap_each{|x| seen << x }.first(3)
+  assert_equal [1, 2, 3], seen
 end
 
 assert("Enumerator::Lazy#zip with cycle") do

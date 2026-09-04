@@ -11,7 +11,6 @@
 #include <mruby/time.h>
 #include <mruby/string.h>
 #include <mruby/internal.h>
-#include <mruby/presym.h>
 
 #ifdef MRB_NO_STDIO
 #include <string.h>
@@ -1490,7 +1489,7 @@ time_to_s(mrb_state *mrb, mrb_value self)
 #endif
   }
   mrb_value str = mrb_str_new(mrb, buf, len);
-  RSTR_SET_ASCII_FLAG(mrb_str_ptr(str));
+  RSTR_CODERANGE_SET(mrb_str_ptr(str), MRB_STR_CODERANGE_7BIT);
   return str;
 }
 

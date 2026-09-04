@@ -291,11 +291,12 @@ class Enumerator
     #
     def flat_map(&block)
       Lazy.new(self){|yielder, val|
-        ary = block.call(val)
-        # TODO: check ary is an Array
-        ary.each {|x|
-          yielder << x
-        }
+        result = block.call(val)
+        if result.respond_to?(:each)
+          result.each {|x| yielder << x }
+        else
+          yielder << result
+        end
       }
     end
     alias collect_concat flat_map
@@ -345,6 +346,26 @@ class Enumerator
           yielder << val
           hash[v] = val
         end
+      }
+    end
+
+    #
+    # call-seq:
+    #   lazy.tap_each {|obj| block } -> lazy_enumerator
+    #
+    # Yields each element to the block for side effects (e.g. logging,
+    # debugging) and passes it through unmodified.
+    #
+    #   (1..Float::INFINITY).lazy
+    #     .tap_each {|i| puts "saw: #{i}" }
+    #     .select(&:even?)
+    #     .first(3)
+    #   #=> [2, 4, 6]  (prints "saw: 1", "saw: 2", ... along the way)
+    #
+    def tap_each(&block)
+      Lazy.new(self){|yielder, val|
+        block.call(val)
+        yielder << val
       }
     end
 

@@ -4,7 +4,6 @@
 #include <mruby/string.h>
 #include <mruby/class.h>
 #include <mruby/internal.h>
-#include <mruby/presym.h>
 
 #ifndef MRB_NO_FLOAT
 static mrb_value flo_remainder(mrb_state *mrb, mrb_value self);
@@ -63,7 +62,11 @@ int_remainder(mrb_state *mrb, mrb_value x)
     if (mrb_integer_p(y) || mrb_bigint_p(y)) {
       return mrb_bint_rem(mrb, x, y);
     }
+#ifdef MRB_NO_FLOAT
+    mrb_raise(mrb, E_TYPE_ERROR, "non integer remainder");
+#else
     return flo_remainder(mrb, mrb_float_value(mrb, mrb_as_float(mrb, x)));
+#endif
   }
 #endif
   a = mrb_integer(x);
@@ -85,16 +88,20 @@ mrb_value mrb_int_pow(mrb_state *mrb, mrb_value x, mrb_value y);
 static mrb_int
 mrb_int_gcd(mrb_int x, mrb_int y)
 {
-  if (x < 0) x = -x;
-  if (y < 0) y = -y;
+  /* Negate via unsigned so MRB_INT_MIN doesn't overflow.
+     The cast back at the end produces MRB_INT_MIN only when the
+     true result is 2^63 (gcd of MRB_INT_MIN with itself or 0);
+     callers detect that case from the negative return value. */
+  mrb_uint ux = (x < 0) ? -(mrb_uint)x : (mrb_uint)x;
+  mrb_uint uy = (y < 0) ? -(mrb_uint)y : (mrb_uint)y;
 
-  while (y != 0) {
-    mrb_int temp = y;
-    y = x % y;
-    x = temp;
+  while (uy != 0) {
+    mrb_uint temp = uy;
+    uy = ux % uy;
+    ux = temp;
   }
 
-  return x;
+  return (mrb_int)ux;
 }
 
 /*
@@ -123,7 +130,11 @@ int_gcd(mrb_state *mrb, mrb_value x)
   if (!mrb_integer_p(y)) {
     mrb_raisef(mrb, E_TYPE_ERROR, "can't convert %Y into Integer", y);
   }
-  return mrb_int_value(mrb, mrb_int_gcd(mrb_integer(x), mrb_integer(y)));
+  mrb_int g = mrb_int_gcd(mrb_integer(x), mrb_integer(y));
+  /* g < 0 only when the mathematical result is 2^63 (= |MRB_INT_MIN|),
+     which does not fit in mrb_int. */
+  if (g < 0) mrb_int_overflow(mrb, "gcd");
+  return mrb_int_value(mrb, g);
 }
 
 /*
@@ -159,6 +170,10 @@ int_lcm(mrb_state *mrb, mrb_value x)
 
   if (a == 0 || b == 0) return mrb_int_value(mrb, 0);
 
+  /* Negation of MRB_INT_MIN is UB and the lcm with any non-zero
+     operand would not fit in mrb_int anyway. */
+  if (a == MRB_INT_MIN || b == MRB_INT_MIN) mrb_int_overflow(mrb, "lcm");
+
   gcd_val = mrb_int_gcd(a, b);
   if (a < 0) a = -a;
   if (b < 0) b = -b;
@@ -191,11 +206,7 @@ int_powm(mrb_state *mrb, mrb_value x)
     return mrb_int_pow(mrb, x, mrb_get_arg1(mrb));
   }
   mrb_get_args(mrb, "oo", &e, &m);
-  if (!mrb_integer_p(e)
-#ifdef MRB_USE_BIGINT
-      && !mrb_bigint_p(e)
-#endif
-      ) {
+  if (!mrb_integer_p(e) && !mrb_bigint_p(e)) {
     mrb_raise(mrb, E_TYPE_ERROR, "int.pow(n,m): 2nd argument not allowed unless 1st argument is an integer");
   }
 #ifdef MRB_USE_BIGINT

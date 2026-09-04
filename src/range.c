@@ -11,11 +11,6 @@
 #include <mruby/array.h>
 #include <mruby/numeric.h>
 #include <mruby/internal.h>
-#include <mruby/presym.h>
-
-#define RANGE_INITIALIZED_FLAG 1
-#define RANGE_INITIALIZED(p) ((p)->flags |= RANGE_INITIALIZED_FLAG)
-#define RANGE_INITIALIZED_P(p) ((p)->flags & RANGE_INITIALIZED_FLAG)
 
 static void
 r_check(mrb_state *mrb, mrb_value a, mrb_value b)
@@ -28,7 +23,18 @@ r_check(mrb_state *mrb, mrb_value a, mrb_value b)
 #else
   if ((ta == MRB_TT_INTEGER || ta == MRB_TT_FLOAT) &&
       (tb == MRB_TT_INTEGER || tb == MRB_TT_FLOAT)) {
-    return;
+    /* Two numbers stand in some order, and which one needs no comparison to
+       tell, unless one of them is a NaN, which stands in no order with
+       anything. A range bounded by one holds nothing and covers nothing, so
+       the pair is refused here, as a pair that cannot be compared is below.
+       An end left out is nil rather than a number and does not reach this
+       branch, which is why `(Float::NAN..)` is still a range: with one end
+       there is no pair to put in order. */
+    if ((ta != MRB_TT_FLOAT || !isnan(mrb_float(a))) &&
+        (tb != MRB_TT_FLOAT || !isnan(mrb_float(b)))) {
+      return;
+    }
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "bad value for range");
   }
 #endif
 
@@ -433,11 +439,7 @@ mrb_get_values_at(mrb_state *mrb, mrb_value obj, mrb_int olen, mrb_int argc, con
   for (mrb_int i = 0; i < argc; i++) {
     mrb_value v = argv[i];
 
-    if (mrb_integer_p(v)
-#ifdef MRB_USE_BIGINT
-        || mrb_bigint_p(v)
-#endif
-        ) {
+    if (mrb_integer_p(v) || mrb_bigint_p(v)) {
       mrb_int i = mrb_as_int(mrb, v);
       mrb_ary_push(mrb, result, func(mrb, obj, i));
     }

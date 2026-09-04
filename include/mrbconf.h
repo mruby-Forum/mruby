@@ -138,8 +138,8 @@
 /* turn off generational GC by default */
 //#define MRB_GC_TURN_OFF_GENERATIONAL
 
-/* default size of khash table bucket */
-//#define KHASH_DEFAULT_SIZE 32
+/* initial size of khash table bucket */
+//#define KHASH_INITIAL_SIZE 32
 
 /* allocated memory address alignment */
 //#define POOL_ALIGNMENT 4
@@ -170,6 +170,13 @@
 /* Threshold for switching from linear search to hash table */
 #ifndef MRB_SYMBOL_LINEAR_THRESHOLD
 #define MRB_SYMBOL_LINEAR_THRESHOLD 256
+#endif
+
+/* Maximum number of dynamic symbols (created at runtime via to_sym etc.)
+   Presyms, inline symbols, and mrb_intern_static symbols are excluded.
+   Set to 0 to disable the limit. */
+#ifndef MRB_SYMBOL_MAX
+#define MRB_SYMBOL_MAX 4096
 #endif
 
 /* obsolete configurations */
@@ -208,8 +215,8 @@
 #  define MRB_NO_METHOD_CACHE
 # endif
 
-# ifndef KHASH_DEFAULT_SIZE
-#  define KHASH_DEFAULT_SIZE 16
+# ifndef KHASH_INITIAL_SIZE
+#  define KHASH_INITIAL_SIZE 16
 # endif
 
 # ifndef MRB_HEAP_PAGE_SIZE

@@ -1,59 +1,86 @@
-all_prerequisites = ->(task_name, prereqs) do
-  Rake::Task[task_name].prerequisites.each do |prereq_name|
-    next if prereqs[prereq_name]
-    prereqs[prereq_name] = true
-    all_prerequisites.(Rake::Task[prereq_name].name, prereqs)
-  end
-end
-
+# Every target first, before `build.objects` below resolves a rule: the
+# products of one target reach the objects of another (a build reaches the
+# mrbc build it generated), and a rule resolved for those objects must see
+# the same include paths as the compile that follows it.
 MRuby.each_target do |build|
-  gensym_task = task(:gensym)
-
-  presym = build.presym
-
   include_dir = "#{build.build_dir}/include"
   build.compilers.each{|c| c.include_paths << include_dir}
   build.gems.each{|gem| gem.compilers.each{|c| c.include_paths << include_dir}}
+end
 
-  prereqs = {}
-  ppps = []
-  build_dir = "#{build.build_dir}/"
-  mrbc_build_dir = "#{build.mrbc_build.build_dir}/" if build.mrbc_build
-  build.products.each{|product| all_prerequisites.(product, prereqs)}
-  prereqs.each_key do |prereq|
-    next unless File.extname(prereq) == build.exts.object
-    next unless prereq.start_with?(build_dir)
-    next if mrbc_build_dir && prereq.start_with?(mrbc_build_dir)
-    ppp = prereq.ext(build.exts.presym_preprocessed)
-    if Rake.application.lookup(ppp) ||
-       Rake.application.enhance_with_matching_rule(ppp)
-      ppps << ppp
+# `all` waits on `gensym` whether or not a build below adds a table to it.
+task :gensym
+
+MRuby.each_target do |build|
+  # `id.h` numbers the symbols in the order `table.h` lists them, and
+  # `symbol.c` compiles `table.h` in: the two headers are one artifact, and
+  # libmruby is its reader. A build with `disable_libmruby` builds no
+  # `symbol.c`; it builds `mrbc` from the compiler gem's objects, which are
+  # compiled without `mruby.h` (`MRB_NO_GEMS` keeps `MRC_TARGET_MRUBY` off), so
+  # a table written for it has no reader, and preprocessing every core source
+  # to write it is work for nothing.
+  next unless build.libmruby_enabled?
+
+  presym = build.presym
+
+  objects = build.objects
+  ppps = objects.map { |obj| obj.ext(build.exts.presym_preprocessed) }.select do |ppp|
+    Rake.application.lookup(ppp) || Rake.application.enhance_with_matching_rule(ppp)
+  end
+
+  presym_task = file presym.list_path => ppps do
+    presyms = presym.scan(ppps)
+    current_presyms = presym.read_list if File.exist?(presym.list_path)
+    if presyms != current_presyms
+      mkdir_p presym.header_dir
+      %w[id table].each do |type|
+        presym.send("write_#{type}_header", presyms)
+      end
+      presym.write_list(presyms)
+    elsif !presym.headers_exist?
+      # The headers are made from the list, so a header that is gone is
+      # written again from the list as it stands. The list itself is left
+      # alone: its timestamp is what every object depends on, and nothing
+      # about the symbols changed. Only the header that is gone is written,
+      # since a new `id.h` recompiles every object that includes it.
+      mkdir_p presym.header_dir
+      %w[id table].each do |type|
+        next if File.exist?(presym.send("#{type}_header_path"))
+        presym.send("write_#{type}_header", presyms)
+      end
     end
   end
 
-  file presym.list_path => ppps do
-    presyms = presym.scan(ppps)
-    current_presyms = presym.read_list if File.exist?(presym.list_path)
-    update = presyms != current_presyms
-    presym.write_list(presyms) if update
-    mkdir_p presym.header_dir
-    %w[id table].each do |type|
-      next if !update && File.exist?(presym.send("#{type}_header_path"))
-      presym.send("write_#{type}_header", presyms)
-    end
+  # The list is the file of the task above, so Rake runs it only when a
+  # preprocessed file is newer than the list. The headers are made from the
+  # list, so a header that is gone needs the task too, with the list as it is.
+  presym_task.define_singleton_method :needed? do
+    super() || !presym.headers_exist?
+  end
+
+  # Don't directly write dependency tasks in the "task" arguments.
+  # The rake system tracks dependencies recursively
+  # (see Rake::Task#all_prerequisite_tasks and #collect_prerequisites).
+  # Therefore, indirect dependencies from ".o" to ".pi" must be eliminated.
+  # ref. https://github.com/mruby/mruby/issues/6721
+  # This task acts a proxy-like for the "presym.list_path" task.
+  presym_proxy = task "gensym:update:#{build.name}" do
+    presym_task.invoke
+  end
+
+  # Override the "timestamp" method to reflect the presym file.
+  presym_proxy.define_singleton_method :timestamp do
+    presym_task.timestamp
   end
 
   # Ensure .o files depend on presym headers being generated.
   # This is critical when a build's .o files are compiled during another
   # build's presym scanning chain (before :gensym completes), e.g.:
   #   - internal sub-builds (mrbc) triggered by their parent build
-  #   - the implicit host build triggered by a cross build needing mrbc
-  prereqs.each_key do |prereq|
-    next unless File.extname(prereq) == build.exts.object
-    next unless prereq.start_with?(build_dir)
-    next if mrbc_build_dir && prereq.start_with?(mrbc_build_dir)
-    file prereq => presym.list_path
+  #   - the mrbc build generated for a cross build that has none to borrow
+  objects.each do |obj|
+    file obj => presym_proxy
   end
 
-  gensym_task.enhance([presym.list_path])
+  task gensym: presym.list_path
 end

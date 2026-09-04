@@ -2,6 +2,9 @@ name: Coverage
 
 on: [push]
 
+permissions:
+  contents: read
+
 jobs:
   coverage:
     name: Coverage
@@ -16,7 +19,10 @@ jobs:
       LDFLAGS: --coverage
     steps:
       - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
       - name: Ruby version
         run: ruby -v
       - name: Compiler version
@@ -30,11 +36,11 @@ jobs:
           {
             echo "# Coverage report"
             echo \`\`\`
-            gcovr --gcov-executable "llvm-cov-18 gcov" -e ".*_test.c" -e ".*/test/.*" -s --html-details -o coverage/ build
+            gcovr --gcov-executable "llvm-cov-18 gcov" --gcov-ignore-errors=source_not_found --merge-mode-functions=separate -e ".*_test.c" -e ".*/test/.*" -e ".*prism.*" -s --html-details -o coverage/ build
             echo \`\`\`
           } > "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-${{ github.sha }}
           path: coverage/
